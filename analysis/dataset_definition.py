@@ -141,17 +141,17 @@ clin_events = clinical_events.where(
 
 # Diabetes
 diabetes_date = clin_events.where(
-        clin_events.snomedct_code.is_in(codelists.diabetes_codes)
-    ).date
+    clin_events.snomedct_code.is_in(codelists.diabetes_codes)
+).date
 
 # Diabetes resolved
 diabetes_resolved_date = clin_events.where(
-        clin_events.snomedct_code.is_in(codelists.diabetes_resolved_codes)
-    ).date
+    clin_events.snomedct_code.is_in(codelists.diabetes_resolved_codes)
+).date
 
 # Does patient have diabetes -
-#   patient has a diabetes diagnosis, with either no
-#   diabetes resolved diagnosis following the diabetes diagnosis
+#   patient has a diabetes diagnosis, with no
+#   diabetes resolved code following the diabetes diagnosis
 dataset.diabetes = (
     diabetes_date.exists_for_patient
     & diabetes_resolved_date.is_null() | (diabetes_resolved_date < diabetes_date)
