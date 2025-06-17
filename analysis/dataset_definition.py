@@ -1,7 +1,16 @@
-from ehrql import create_dataset, case, when
-from ehrql.tables.tpp import patients, practice_registrations, clinical_events, addresses
+from ehrql import create_dataset, case, when, years, show
+from ehrql.tables.tpp import patients, practice_registrations, clinical_events, addresses, apcs
+
+import codelists
+
 
 dataset = create_dataset()
+
+### Note: can add parameterisation - i.e. to run code over range of different values (e.g. dates)
+
+
+# Set desired size for dummy date (note - larger size means it will take longer to generate)
+dataset.configure_dummy_data(population_size=100000)
 
 # Set baseline date, and end of follow-up
 #   can be same date for everyone, or patient specific
@@ -25,7 +34,6 @@ dataset.dod = patients.date_of_death
 has_registration = practice_registrations.for_patient_on(
     index_date
 ).exists_for_patient()
-dataset.practice_reg_start_date = practice_registrations.start_date
 
 # Practice registrations spanning study period
 registrations = practice_registrations.spanning(
@@ -33,12 +41,12 @@ registrations = practice_registrations.spanning(
     )
 
 # Earliest registration start date
-dataset.reg_start_date = registrations.sort_by(
+dataset.practice_reg_start_date = registrations.sort_by(
         practice_registrations.start_date
     ).first_for_patient().start_date
 
 # Latest registration end date (if they did not deregister will be null)
-dataset.reg_end_date = registrations.sort_by(
+dataset.practice_reg_end_date = registrations.sort_by(
        practice_registrations.end_date
     ).last_for_patient().end_date
 
@@ -127,32 +135,73 @@ dataset.define_population(
     has_registration # registered with TPP practice
     & ((dataset.dod < index_date) | dataset.dod.is_null()) # still alive on index date
     & dataset.dob.is_not_null() # non missing age
-    & dataset.sex.is_not_null() # non missing sex
+    & dataset.sex.is_in(["male","female"]) # non missing sex
     )
 
 
 ############################
 
-# Extract all events before index date
-#   creating a subset first cuts down processing time
-clin_events = clinical_events.where(
+# Create temporary subset of datasets to cut down processing time
+
+# Extract all primary care events before index date
+primary_events_2yrs = clinical_events.where(
     clinical_events.date.is_on_or_between(index_date - years(2), index_date)
 )
 
-# Diabetes
-diabetes_date = clin_events.where(
-        clin_events.snomedct_code.is_in(codelists.diabetes_codes)
-    ).date
+# Extract all secondary care events before index date
+secondary_events_2yrs = apcs.where(
+    apcs.admission_date.is_on_or_between(index_date - years(2), index_date)
+)
 
-# Diabetes resolved
-diabetes_resolved_date = clin_events.where(
-        clin_events.snomedct_code.is_in(codelists.diabetes_resolved_codes)
-    ).date
 
-# Does patient have diabetes -
+# Diabetes in primary care
+diabetes_date = primary_events_2yrs.where(
+        primary_events_2yrs.snomedct_code.is_in(codelists.diabetes_codes)
+    ).sort_by(
+        primary_events_2yrs.date
+    ).last_for_patient().date
+
+# Diabetes in primary care resolved
+diabetes_resolved_date = primary_events_2yrs.where(
+        primary_events_2yrs.snomedct_code.is_in(codelists.diabetes_resolved_codes)
+    ).sort_by(
+        primary_events_2yrs.date
+    ).last_for_patient().date
+
+# Does patient have diabetes recorded in primary care -
 #   patient has a diabetes diagnosis, with either no
 #   diabetes resolved diagnosis following the diabetes diagnosis
-dataset.diabetes = (
-    diabetes_date.exists_for_patient
-    & diabetes_resolved_date.is_null() | (diabetes_resolved_date < diabetes_date)
+dataset.diabetes_primary = (
+    diabetes_date.is_not_null()
+    & (diabetes_resolved_date.is_null() | (diabetes_resolved_date < diabetes_date))
 )
+
+# Diabetes in secondary care (primary diagnosis only)
+dataset.diabetes_secondary = secondary_events_2yrs.where(
+        secondary_events_2yrs.primary_diagnosis.is_in(codelists.diabetes_secondary_codes)
+).exists_for_patient()
+    
+
+# Example code to extract range of comorbidities 
+# comorb_codes = {
+#     "diabetes": codelists.diabetes_codes,
+#     "cardiac": codelists.cardiac_codes,
+#     "copd": codelists.copd_codes,
+#     "liver": codelists.liver_codes,
+#     "ckd": codelists.ckd_codes,
+#     "oa": codelists.osteoarthritis_codes,
+#     "ra": codelists.ra_codes,
+#     "depression": codelists.depression_codes,
+#     "anxiety": codelists.anxiety_codes,
+#     "smi": codelists.smi_codes,
+#     "oud": codelists.oud_codes
+#     }
+
+# for comorb, comorb_codelist in comorb_codes.items():
+
+#     snomed_query = primary_events_2yrs.where(
+#             primary_events_2yrs.snomedct_code.is_in(comorb_codelist)
+#         ).exists_for_patient()
+    
+#     dataset.add_column(comorb, snomed_query)
+

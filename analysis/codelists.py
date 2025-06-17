@@ -12,16 +12,22 @@
 ## Import code building blocks from cohort extractor package
 from ehrql import codelist_from_csv
  
-## Type 2 diabetes
+## Type 2 diabetes - primary care
 diabetes_codes = codelist_from_csv(
   "codelists/nhsd-primary-care-domain-refsets-dm_cod.csv", 
   column = "code",
 )
 
-## Type 2 diabetes resolved
+## Type 2 diabetes resolved - primary care
 diabetes_resolved_codes = codelist_from_csv(
   "codelists/nhsd-primary-care-domain-refsets-dmres_cod.csv", 
   column = "code",
+)
+
+## Type 2 diabetes - secondary care
+diabetes_secondary_codes = codelist_from_csv(
+    "codelists/user-anschaf-type-2-diabetes-secondary-care.csv",
+    column = "code"
 )
 
 ## Ethnicity - 16 categories
