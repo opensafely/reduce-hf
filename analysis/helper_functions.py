@@ -75,3 +75,7 @@ def last_matching_event_clinical_snomed_before(codelist, start_date, where=True)
         .sort_by(clinical_events.date)
         .last_for_patient()
     )
+
+# filter a codelist based on whether its values included a specified set of allowed values (include)
+def filter_codes_by_category(codelist, include):
+    return {k:v for k,v in codelist.items() if v in include}

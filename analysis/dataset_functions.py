@@ -14,16 +14,20 @@ from ehrql.tables.tpp import (
     practice_registrations,
     clinical_events,
     addresses,
-    apcs
+    apcs,
+    household_memberships_2020,
 )
 
 from helper_functions import (
     ed_attendances,
     primary_care_attendances,
     hospital_admissions,
+    ever_matching_event_clinical_ctv3_before,
     first_matching_event_clinical_ctv3_before,
     first_matching_event_clinical_snomed_before,
     last_matching_event_clinical_snomed_before,
+    last_matching_event_clinical_ctv3_before,
+    filter_codes_by_category
 )
 
 from codelists import *
@@ -47,7 +51,7 @@ def add_core(dataset, project_index_date):
     dataset.dob = patients.date_of_birth
 
     #add practice details
-    # most recent prectice registration
+    # most recent practice registration
 
     practice = practice_registrations.sort_by(
         practice_registrations.start_date,
@@ -72,23 +76,86 @@ def add_core(dataset, project_index_date):
     dataset.practice_stp = practice.practice_stp
     dataset.region = practice.practice_nuts1_region_name
 
-    imd = addresses.for_patient_on(project_index_date).imd_rounded
-    dataset.imd10 = case(
-        when((imd >= 0) & (imd < int(32844 * 1 / 10))).then("1 (most deprived)"),
-        when(imd < int(32844 * 2 / 10)).then("2"),
-        when(imd < int(32844 * 3 / 10)).then("3"),
-        when(imd < int(32844 * 4 / 10)).then("4"),
-        when(imd < int(32844 * 5 / 10)).then("5"),
-        when(imd < int(32844 * 6 / 10)).then("6"),
-        when(imd < int(32844 * 7 / 10)).then("7"),
-        when(imd < int(32844 * 8 / 10)).then("8"),
-        when(imd < int(32844 * 9 / 10)).then("9"),
-        when(imd >= int(32844 * 9 / 10)).then("10 (least deprived)"),
-        otherwise="unknown"
+    location = addresses.for_patient_on(practice.start_date)
+
+    dataset.imd10 = location.imd_decile
+
+    dataset.rural_urban = location.rural_urban_classification
+    
+    dataset.carehome = (
+        location.care_home_is_potential_match |
+        location.care_home_requires_nursing |
+        location.care_home_does_not_require_nursing
     )
+
 
     return dataset
 
+
+
+def add_time_dependent_core(dataset, index_date):
+
+    '''
+    add core variables that depend on index date
+    and therefore differ between WPs
+    variables to be added:
+    -  smoking status
+    -  household size
+    -  BMI
+    -  systolic BP*
+    -  diastolic BP*
+    -  total cholesterol*
+    *(date of most recent test/reading prior to index date and value)
+    '''
+
+    # Smoking status
+    tmp_most_recent_smoking_cat = (
+        last_matching_event_clinical_ctv3_before(smoking_clear, index_date)
+        .ctv3_code.to_category(smoking_clear)
+    )
+    tmp_ever_smoked = ever_matching_event_clinical_ctv3_before(
+        (filter_codes_by_category(smoking_clear, include=["S", "E"])), index_date
+        ).exists_for_patient()
+
+    dataset.smoking = case(
+        when(tmp_most_recent_smoking_cat == "S").then("S"),
+        when((tmp_most_recent_smoking_cat == "E") | ((tmp_most_recent_smoking_cat == "N") & (tmp_ever_smoked == True))).then("E"),
+        when((tmp_most_recent_smoking_cat == "N") & (tmp_ever_smoked == False)).then("N"),
+        otherwise="M"
+    )
+
+    #Household size
+    #NOTE this doesnt depend on index date -- should be in core function
+    dataset.household_size = household_memberships_2020.household_size
+    
+
+    #Cholesterol
+    dataset.last_cholesterol_date = last_matching_event_clinical_snomed_before(
+        cholesterol_snomed, index_date
+        ).date
+
+    dataset.last_cholesterol_value = last_matching_event_clinical_snomed_before(
+        cholesterol_snomed, index_date
+        ).numeric_value
+
+    return dataset
+
+
+def add_hf_diagnosis(dataset, index_date):
+
+    '''
+    need to define this more thoroughly
+    using primary care diagnosis for script development
+    function currently returns date of first HF diagnosis in primary care
+    function should also return location of first diagnosis
+    i.e. community or emergency-hospital
+    ''' 
+
+    dataset.hf_diagnosis_date = first_matching_event_clinical_snomed_before(
+        hf_snomed, index_date
+        ).date
+
+    return dataset
 
 def add_healthservice_use(dataset, index_date):
 
@@ -128,29 +195,64 @@ def add_comorbidities(dataset, index_date):
     means we can derive as binary variables rather than dates
     '''
 
-    dataset.copd_date = first_matching_event_clinical_ctv3_before(
+    dataset.copd = first_matching_event_clinical_ctv3_before(
         copd_ctv3, index_date
         ).exists_for_patient()
 
-    dataset.ckd_date = first_matching_event_clinical_snomed_before(
+    dataset.ckd = first_matching_event_clinical_snomed_before(
         ckd_snomed, index_date
         ).exists_for_patient()
 
-    dataset.diabetes_date = first_matching_event_clinical_snomed_before(
+    dataset.diabetes = first_matching_event_clinical_snomed_before(
         diabetes_snomed, index_date
         ).exists_for_patient()
 
     #using latest date for obesity, hypertension, and total cholesterol
-    dataset.obesity_date = last_matching_event_clinical_snomed_before(
+    dataset.obesity = last_matching_event_clinical_snomed_before(
         bmi_obesity_snomed, index_date
         ).exists_for_patient()
 
-    dataset.hypertension_date = last_matching_event_clinical_snomed_before(
+    dataset.hypertension = last_matching_event_clinical_snomed_before(
         hypertension_snomed, index_date
         ).exists_for_patient()
 
-    dataset.last_cholesterol_date = last_matching_event_clinical_snomed_before(
-        cholesterol_snomed, index_date
-        ).date
+    return dataset
+
+
+def add_tests(dataset, index_date):
+    
+    '''
+    derive test dates and results: 
+    -  BNP 
+    -  NT-proBNP
+    '''
+
+    return dataset
+
+
+def add_symptoms(dataset, index_date, start_date):
+
+    '''
+    add first date of recording and whether recorded 
+    between start_date and index_date.
+    symptoms:
+    -  breathlesness
+    -  oedema
+    -  fatigue
+    note: for WP2, index_date == date of BNP / NT-proBNP test
+    '''
+
+    return dataset
+
+
+def add_copd_severity(dataset, index_date):
+
+
+    '''
+    add date of most recent copd annual review
+    and values for:
+    -  MRC breathlessness score
+    -  Number of exacerbations
+    '''
 
     return dataset
