@@ -191,3 +191,10 @@ copd_icd10 = codelist_from_csv(
     "codelists/opensafely-copd-secondary-care.csv",
     column="code"
 )
+
+# HF (for script development)
+
+hf_snomed = codelist_from_csv(
+    "codelists/nhsd-primary-care-domain-refsets-hf_cod.csv",
+    column = "code"
+)
