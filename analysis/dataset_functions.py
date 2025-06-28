@@ -32,7 +32,7 @@ from helper_functions import (
 
 from codelists import *
 
-def add_core(dataset, project_index_date):
+def add_core(dataset, project_index_date, end_date='2025-01-01'):
 
 
     '''
@@ -43,7 +43,7 @@ def add_core(dataset, project_index_date):
 
     dataset: dataset object initialised using create_dataset()
     project_index_date: for our project, 01-01-2017
-
+    end_date: project / follow-up end date
     '''
 
 
@@ -76,18 +76,26 @@ def add_core(dataset, project_index_date):
     dataset.practice_stp = practice.practice_stp
     dataset.region = practice.practice_nuts1_region_name
 
-    location = addresses.for_patient_on(practice.start_date)
+    location = addresses.for_patient_on(dataset.patient_index)
 
     dataset.imd10 = location.imd_decile
 
     dataset.rural_urban = location.rural_urban_classification
-    
-    dataset.carehome = (
+
+    #was address at patient index date a care home    
+    dataset.carehome_at_start = (
         location.care_home_is_potential_match |
         location.care_home_requires_nursing |
         location.care_home_does_not_require_nursing
     )
 
+    #was address at deregistration or study end date a care home
+    location = addresses.for_patient_on(maximum_of(practice.end_date, end_date))
+    dataset.carehome_at_end = (
+        location.care_home_is_potential_match |
+        location.care_home_requires_nursing |
+        location.care_home_does_not_require_nursing
+    )
 
     return dataset
 
@@ -128,6 +136,15 @@ def add_time_dependent_core(dataset, index_date):
     #NOTE this doesnt depend on index date -- should be in core function
     dataset.household_size = household_memberships_2020.household_size
     
+    # BMI
+    dataset.bmi_date = last_matching_event_clinical_snomed_before(
+        bmi_primis, index_date
+        ).date
+
+    dataset.bmi_value = last_matching_event_clinical_snomed_before(
+        bmi_primis, index_date
+        ).numeric_value
+
 
     #Cholesterol
     dataset.last_cholesterol_date = last_matching_event_clinical_snomed_before(
