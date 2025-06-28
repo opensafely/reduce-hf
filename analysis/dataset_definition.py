@@ -20,7 +20,13 @@ from helper_functions import (
     ed_attendances,
     primary_care_attendances,
     hospital_admissions,
+    first_matching_event_clinical_ctv3_before,
+    first_matching_event_clinical_snomed_before,
+    last_matching_event_clinical_snomed_before,
 )
+
+
+from codelists import *
 
 dataset = create_dataset()
 
@@ -116,6 +122,31 @@ for time_name, time in time_periods.items():
     dataset.add_column('hospital_admissions_'+time_name, hospital_admissions(project_index_date, project_index_date + time))
 
 
+# add comorbidities -- note all from primary care atm. Need to decide how to define accross tables.
 
+dataset.copd_date = first_matching_event_clinical_ctv3_before(
+    copd_ctv3, project_index_date
+    ).date
+
+dataset.ckd_date = first_matching_event_clinical_snomed_before(
+    ckd_snomed, project_index_date
+    ).date
+
+dataset.diabetes_date = first_matching_event_clinical_snomed_before(
+    diabetes_snomed, project_index_date
+    ).date
+
+#using latest date for obesity, hypertension, and total cholesterol
+dataset.obesity_date = last_matching_event_clinical_snomed_before(
+    bmi_obesity_snomed, project_index_date
+    ).date
+
+dataset.hypertension_date = last_matching_event_clinical_snomed_before(
+    hypertension_snomed, project_index_date
+    ).date
+
+dataset.last_cholesterol_date = last_matching_event_clinical_snomed_before(
+    cholesterol_snomed, project_index_date
+    ).date
 
 
