@@ -7,6 +7,7 @@ from ehrql import (
     years,
     days,
     maximum_of,
+    minimum_of,
 )
 
 from ehrql.tables.tpp import (
@@ -16,6 +17,7 @@ from ehrql.tables.tpp import (
     addresses,
     apcs,
     household_memberships_2020,
+    ons_deaths,
 )
 
 from helper_functions import (
@@ -97,6 +99,10 @@ def add_core(dataset, project_index_date, end_date='2025-01-01'):
         location.care_home_does_not_require_nursing
     )
 
+    # date of death
+    dataset.death_date = minimum_of(patients.date_of_death, ons_deaths.date)
+
+
     return dataset
 
 
@@ -127,7 +133,8 @@ def add_time_dependent_core(dataset, index_date):
 
     dataset.smoking = case(
         when(tmp_most_recent_smoking_cat == "S").then("S"),
-        when((tmp_most_recent_smoking_cat == "E") | ((tmp_most_recent_smoking_cat == "N") & (tmp_ever_smoked == True))).then("E"),
+        when((tmp_most_recent_smoking_cat == "E") | ((tmp_most_recent_smoking_cat == "N") 
+            & (tmp_ever_smoked == True))).then("E"),
         when((tmp_most_recent_smoking_cat == "N") & (tmp_ever_smoked == False)).then("N"),
         otherwise="M"
     )
@@ -247,16 +254,21 @@ def add_tests(dataset, index_date):
     return dataset
 
 
-def add_symptoms(dataset, index_date, start_date):
+def add_symptoms(dataset, start_date, end_date):
 
     '''
     add first date of recording and whether recorded 
-    between start_date and index_date.
+    between start_date and end_date.
     symptoms:
     -  breathlesness
     -  oedema
     -  fatigue
     note: for WP2, index_date == date of BNP / NT-proBNP test
+
+    need to add following codelists:
+    -  breathlesness: https://www.opencodelists.org/codelist/nhsd-primary-care-domain-refsets/breathlessness-codes/20241205/
+    -  oedema: not currently available - need to create
+    -  fatigue: https://www.opencodelists.org/codelist/opensafely/symptoms-fatigue/0e9ac677/
     '''
 
     return dataset
@@ -267,9 +279,37 @@ def add_copd_severity(dataset, index_date):
 
     '''
     add date of most recent copd annual review
-    and values for:
+    prior to index_date and values for:
     -  MRC breathlessness score
     -  Number of exacerbations
+    
+    need to add following codelists:
+    -  COPD reviews: https://www.opencodelists.org/codelist/nhsd-primary-care-domain-refsets/copdrvw_cod/20241205/
+    -  number of exacerbations: https://www.opencodelists.org/codelist/nhsd-primary-care-domain-refsets/copdexacb_cod/20241205/
+    -  MRC breathlessness: https://www.opencodelists.org/codelist/nhsd-primary-care-domain-refsets/mrc_cod/20241205/
+    '''
+
+    return dataset
+
+
+def add_medications(dataset, start_date, end_date):
+
+    '''
+    add functions to count number of prescriptions
+    for a medication between start_date and end_date
+    will need codelists for medications
+    can use helper functions from post-covid-events
+    '''
+
+    return dataset
+
+
+def add_referrals(dataset, index_date):
+
+    '''
+    add functions to count referrals
+    for XX (WP2) prior to index_date
+    *maybe also need start_date?
     '''
 
     return dataset
